@@ -8,11 +8,13 @@ import AppKit
 struct MarkdownWebView: NSViewRepresentable {
     let html: String
     let baseURL: URL?
+    var theme: ThemeMode = .system
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     final class Coordinator: NSObject, WKNavigationDelegate {
         var lastLoadedHTML: String?
+        var lastAppliedTheme: ThemeMode?
 
         func webView(
             _ webView: WKWebView,
@@ -35,9 +37,56 @@ struct MarkdownWebView: NSViewRepresentable {
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
-        // Avoid reloading (and losing scroll position) on unrelated SwiftUI updates, e.g. resizing.
-        guard context.coordinator.lastLoadedHTML != html else { return }
-        context.coordinator.lastLoadedHTML = html
+        let coordinator = context.coordinator
+
+        // If only the theme changed, update via JS to preserve scroll position.
+        if coordinator.lastLoadedHTML != nil,
+           coordinator.lastLoadedHTML == html.replacingThemeAttribute(with: coordinator.lastAppliedTheme),
+           coordinator.lastAppliedTheme != theme {
+            coordinator.lastAppliedTheme = theme
+            coordinator.lastLoadedHTML = html
+            let value = theme.htmlAttribute ?? ""
+            let js = value.isEmpty
+                ? "document.documentElement.removeAttribute('data-theme');"
+                : "document.documentElement.setAttribute('data-theme', '\(value)');"
+            webView.evaluateJavaScript(js, completionHandler: nil)
+            return
+        }
+
+        // Full reload when content actually changed.
+        guard coordinator.lastLoadedHTML != html else { return }
+        coordinator.lastLoadedHTML = html
+        coordinator.lastAppliedTheme = theme
         webView.loadHTMLString(html, baseURL: baseURL)
+    }
+}
+
+private extension String {
+    /// Replaces the data-theme attribute in an HTML string for comparison purposes.
+    func replacingThemeAttribute(with theme: ThemeMode?) -> String {
+        guard let theme else { return self }
+        let target: String
+        switch theme {
+        case .system:
+            target = "<html>"
+        case .light:
+            target = "<html data-theme=\"light\">"
+        case .dark:
+            target = "<html data-theme=\"dark\">"
+        }
+        // Replace current theme attribute with the target's equivalent
+        let patterns = [
+            "<html>",
+            "<html data-theme=\"light\">",
+            "<html data-theme=\"dark\">"
+        ]
+        var result = self
+        for pattern in patterns {
+            if result.contains(pattern) {
+                result = result.replacingOccurrences(of: pattern, with: target)
+                break
+            }
+        }
+        return result
     }
 }

@@ -2,16 +2,17 @@ import Foundation
 
 /// Converts Markdown source into a complete, styled HTML document ready to hand to a WKWebView.
 enum MarkdownRenderer {
-    static func renderHTML(markdown: String, baseURL: URL?) -> String {
+    static func renderHTML(markdown: String, baseURL: URL?, theme: ThemeMode = .system) -> String {
         let body = MarkdownToHTML.convert(markdown)
-        return wrap(body: body, baseURL: baseURL)
+        return wrap(body: body, baseURL: baseURL, theme: theme)
     }
 
-    private static func wrap(body: String, baseURL: URL?) -> String {
+    private static func wrap(body: String, baseURL: URL?, theme: ThemeMode) -> String {
         let baseTag = baseURL.map { "<base href=\"\($0.absoluteString)\">" } ?? ""
+        let themeAttr = theme.htmlAttribute.map { " data-theme=\"\($0)\"" } ?? ""
         return """
         <!DOCTYPE html>
-        <html>
+        <html\(themeAttr)>
         <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -127,19 +128,42 @@ enum MarkdownRenderer {
 
     .markdown-body input[type="checkbox"] { margin-right: 0.5em; }
 
+    /* Dark mode: system preference (only when not forced to light) */
     @media (prefers-color-scheme: dark) {
-        html, body { background: #0d1117; }
-        body { color: #e6edf3; }
-        .markdown-body h1, .markdown-body h2 { border-bottom-color: #30363d; }
-        .markdown-body h6 { color: #9198a1; }
-        .markdown-body a { color: #4493f8; }
-        .markdown-body code { background: rgba(110, 118, 129, 0.4); }
-        .markdown-body pre { background: #161b22; }
-        .markdown-body blockquote { color: #9198a1; border-left-color: #30363d; }
-        .markdown-body th, .markdown-body td { border-color: #30363d; }
-        .markdown-body tr:nth-child(2n) { background: #161b22; }
-        .markdown-body th { background: #161b22; }
-        .markdown-body hr { background: #30363d; }
+        html:not([data-theme="light"]), html:not([data-theme="light"]) body {
+            background: #0d1117;
+        }
+        html:not([data-theme="light"]) body { color: #e6edf3; }
+        html:not([data-theme="light"]) .markdown-body h1,
+        html:not([data-theme="light"]) .markdown-body h2 { border-bottom-color: #30363d; }
+        html:not([data-theme="light"]) .markdown-body h6 { color: #9198a1; }
+        html:not([data-theme="light"]) .markdown-body a { color: #4493f8; }
+        html:not([data-theme="light"]) .markdown-body code { background: rgba(110, 118, 129, 0.4); }
+        html:not([data-theme="light"]) .markdown-body pre { background: #161b22; }
+        html:not([data-theme="light"]) .markdown-body blockquote { color: #9198a1; border-left-color: #30363d; }
+        html:not([data-theme="light"]) .markdown-body th,
+        html:not([data-theme="light"]) .markdown-body td { border-color: #30363d; }
+        html:not([data-theme="light"]) .markdown-body tr:nth-child(2n) { background: #161b22; }
+        html:not([data-theme="light"]) .markdown-body th { background: #161b22; }
+        html:not([data-theme="light"]) .markdown-body hr { background: #30363d; }
     }
+
+    /* Dark mode: forced via toggle */
+    html[data-theme="dark"], html[data-theme="dark"] body {
+        background: #0d1117;
+    }
+    html[data-theme="dark"] body { color: #e6edf3; }
+    html[data-theme="dark"] .markdown-body h1,
+    html[data-theme="dark"] .markdown-body h2 { border-bottom-color: #30363d; }
+    html[data-theme="dark"] .markdown-body h6 { color: #9198a1; }
+    html[data-theme="dark"] .markdown-body a { color: #4493f8; }
+    html[data-theme="dark"] .markdown-body code { background: rgba(110, 118, 129, 0.4); }
+    html[data-theme="dark"] .markdown-body pre { background: #161b22; }
+    html[data-theme="dark"] .markdown-body blockquote { color: #9198a1; border-left-color: #30363d; }
+    html[data-theme="dark"] .markdown-body th,
+    html[data-theme="dark"] .markdown-body td { border-color: #30363d; }
+    html[data-theme="dark"] .markdown-body tr:nth-child(2n) { background: #161b22; }
+    html[data-theme="dark"] .markdown-body th { background: #161b22; }
+    html[data-theme="dark"] .markdown-body hr { background: #30363d; }
     """
 }

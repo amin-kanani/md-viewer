@@ -7,16 +7,22 @@ import Combine
 final class RenderState: ObservableObject {
     @Published private(set) var html: String
     @Published var errorMessage: String?
+    @Published var theme: ThemeMode {
+        didSet { rerender() }
+    }
     let baseURL: URL?
 
+    private var currentMarkdown: String
     private let fileURL: URL?
     private var monitorSource: DispatchSourceFileSystemObject?
     private var monitoredHandle: FileHandle?
 
-    init(text: String, fileURL: URL?) {
+    init(text: String, fileURL: URL?, theme: ThemeMode = .system) {
         self.fileURL = fileURL
         self.baseURL = fileURL?.deletingLastPathComponent()
-        self.html = MarkdownRenderer.renderHTML(markdown: text, baseURL: baseURL)
+        self.currentMarkdown = text
+        self.theme = theme
+        self.html = MarkdownRenderer.renderHTML(markdown: text, baseURL: fileURL?.deletingLastPathComponent(), theme: theme)
     }
 
     func startWatching() {
@@ -31,9 +37,6 @@ final class RenderState: ObservableObject {
         )
         source.setEventHandler { [weak self] in
             self?.reloadFromDisk()
-            // Many editors save atomically (write a temp file, then rename it over the
-            // original), which invalidates the descriptor we're watching. Re-attach so we
-            // keep tracking the file at this path either way.
             self?.stopWatching()
             self?.startWatching()
         }
@@ -54,10 +57,15 @@ final class RenderState: ObservableObject {
         guard let fileURL else { return }
         do {
             let text = try String(contentsOf: fileURL, encoding: .utf8)
-            html = MarkdownRenderer.renderHTML(markdown: text, baseURL: baseURL)
+            currentMarkdown = text
+            rerender()
             errorMessage = nil
         } catch {
             errorMessage = "Couldn't reload \(fileURL.lastPathComponent): \(error.localizedDescription)"
         }
+    }
+
+    private func rerender() {
+        html = MarkdownRenderer.renderHTML(markdown: currentMarkdown, baseURL: baseURL, theme: theme)
     }
 }

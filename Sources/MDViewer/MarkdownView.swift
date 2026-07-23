@@ -4,6 +4,7 @@ import AppKit
 
 struct MarkdownView: View {
     @StateObject private var renderer: RenderState
+    @AppStorage("themeMode") private var themeMode: ThemeMode = .system
     private let displayName: String
 
     init(document: MarkdownDocument, fileURL: URL?) {
@@ -12,7 +13,7 @@ struct MarkdownView: View {
     }
 
     var body: some View {
-        MarkdownWebView(html: renderer.html, baseURL: renderer.baseURL)
+        MarkdownWebView(html: renderer.html, baseURL: renderer.baseURL, theme: renderer.theme)
             .overlay(alignment: .top) {
                 if let message = renderer.errorMessage {
                     Label(message, systemImage: "exclamationmark.triangle.fill")
@@ -23,7 +24,25 @@ struct MarkdownView: View {
                 }
             }
             .navigationTitle(displayName)
-            .onAppear { renderer.startWatching() }
+            .toolbar {
+                ToolbarItem(placement: .automatic) {
+                    Picker("Theme", selection: $themeMode) {
+                        ForEach(ThemeMode.allCases) { mode in
+                            Label(mode.label, systemImage: mode.iconName)
+                                .tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .help("Switch between light, dark, or system appearance")
+                }
+            }
+            .onChange(of: themeMode) { newTheme in
+                renderer.theme = newTheme
+            }
+            .onAppear {
+                renderer.theme = themeMode
+                renderer.startWatching()
+            }
             .onDisappear { renderer.stopWatching() }
             .onDrop(of: [.fileURL], isTargeted: nil, perform: handleDrop)
     }
