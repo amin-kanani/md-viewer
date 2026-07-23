@@ -5,6 +5,7 @@ import AppKit
 struct MarkdownView: View {
     @StateObject private var renderer: RenderState
     @AppStorage("themeMode") private var themeMode: ThemeMode = .system
+    @State private var shouldPrint = false
     private let displayName: String
 
     init(document: MarkdownDocument, fileURL: URL?) {
@@ -13,7 +14,7 @@ struct MarkdownView: View {
     }
 
     var body: some View {
-        MarkdownWebView(html: renderer.html, baseURL: renderer.baseURL, theme: renderer.theme)
+        MarkdownWebView(html: renderer.html, baseURL: renderer.baseURL, theme: renderer.theme, shouldPrint: $shouldPrint)
             .overlay(alignment: .top) {
                 if let message = renderer.errorMessage {
                     Label(message, systemImage: "exclamationmark.triangle.fill")
@@ -25,6 +26,14 @@ struct MarkdownView: View {
             }
             .navigationTitle(displayName)
             .toolbar {
+                ToolbarItem(placement: .automatic) {
+                    Button {
+                        shouldPrint = true
+                    } label: {
+                        Label("Print", systemImage: "printer")
+                    }
+                    .help("Print this document")
+                }
                 ToolbarItem(placement: .automatic) {
                     Picker("Theme", selection: $themeMode) {
                         ForEach(ThemeMode.allCases) { mode in

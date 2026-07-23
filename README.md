@@ -5,7 +5,7 @@ A lightweight, native macOS app for viewing rendered Markdown files.
 ## Features
 
 - Renders `.md` / `.markdown` / `.mdown` / `.mkd` files as styled HTML — headings, paragraphs, emphasis/strong/strikethrough, inline code, fenced code blocks, blockquotes, ordered/unordered/task lists, links, images, tables, and thematic breaks
-- Automatic light/dark mode to match your system appearance
+- Light/dark mode with a toolbar toggle — choose between system (follows your macOS appearance), light, or dark
 - Live reload — the preview updates instantly when the file changes on disk, including atomic saves from external editors
 - Multiple ways to open a file:
   - `File → Open…` (⌘O)
@@ -13,6 +13,7 @@ A lightweight, native macOS app for viewing rendered Markdown files.
   - Drag a file onto the app icon in the Dock
   - Drop a file onto an already-open window
 - External links open in your default browser instead of navigating away inside the preview
+- Print support — print the rendered document straight from the toolbar
 - Read-only viewer — it never modifies your source file
 - Ships with its own dependency-free Markdown → HTML renderer, so there are no third-party packages to fetch
 
@@ -55,11 +56,12 @@ Package.swift               Swift package manifest (executable target)
 Sources/MDViewer/
   MDViewerApp.swift          App entry point (SwiftUI DocumentGroup)
   MarkdownDocument.swift     Read-only FileDocument for .md files
-  MarkdownView.swift         Main view; handles drag & drop
+  MarkdownView.swift         Main view; toolbar (theme toggle, print) and drag & drop
   RenderState.swift          Watches the file on disk and re-renders on change
   MarkdownRenderer.swift     Wraps the converted HTML with CSS (light/dark mode)
   MarkdownToHTML.swift       Dependency-free Markdown → HTML converter
-  MarkdownWebView.swift      WKWebView wrapper; routes clicked links to the default browser
+  MarkdownWebView.swift      WKWebView wrapper; routes clicked links to the default browser and handles print
+  ThemeMode.swift            Light / dark / system appearance enum
 AppResources/                Info.plist and app icon (AppIcon.icns)
 DMGResources/                Background image used when styling the DMG
 build.sh                     Builds and packages MD Viewer.app

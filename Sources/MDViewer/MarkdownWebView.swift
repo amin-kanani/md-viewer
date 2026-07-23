@@ -9,6 +9,7 @@ struct MarkdownWebView: NSViewRepresentable {
     let html: String
     let baseURL: URL?
     var theme: ThemeMode = .system
+    @Binding var shouldPrint: Bool
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -38,6 +39,15 @@ struct MarkdownWebView: NSViewRepresentable {
 
     func updateNSView(_ webView: WKWebView, context: Context) {
         let coordinator = context.coordinator
+
+        // Handle print request.
+        if shouldPrint {
+            DispatchQueue.main.async {
+                self.shouldPrint = false
+            }
+            webView.printView(nil)
+            return
+        }
 
         // If only the theme changed, update via JS to preserve scroll position.
         if coordinator.lastLoadedHTML != nil,
