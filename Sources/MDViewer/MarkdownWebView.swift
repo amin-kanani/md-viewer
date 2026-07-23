@@ -1,6 +1,7 @@
 import SwiftUI
 import WebKit
 import AppKit
+import PDFKit
 
 /// Wraps a WKWebView to render the pre-built HTML string, and routes clicked links
 /// (http/https/mailto/etc.) out to the user's default apps instead of navigating away
@@ -16,6 +17,7 @@ struct MarkdownWebView: NSViewRepresentable {
     final class Coordinator: NSObject, WKNavigationDelegate {
         var lastLoadedHTML: String?
         var lastAppliedTheme: ThemeMode?
+        weak var webView: WKWebView?
 
         func webView(
             _ webView: WKWebView,
@@ -29,23 +31,44 @@ struct MarkdownWebView: NSViewRepresentable {
             }
             decisionHandler(.allow)
         }
+
+        func printContent() {
+            guard let webView else { return }
+            webView.createPDF(configuration: WKPDFConfiguration()) { result in
+                DispatchQueue.main.async {
+                    guard case .success(let data) = result,
+                          let pdfDoc = PDFDocument(data: data),
+                          let window = webView.window else { return }
+                    let printInfo = NSPrintInfo.shared.copy() as! NSPrintInfo
+                    guard let printOp = pdfDoc.printOperation(
+                        for: printInfo,
+                        scalingMode: .pageScaleToFit,
+                        autoRotate: true
+                    ) else { return }
+                    printOp.showsPrintPanel = true
+                    printOp.showsProgressPanel = true
+                    printOp.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
+                }
+            }
+        }
     }
 
     func makeNSView(context: Context) -> WKWebView {
         let webView = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
         webView.navigationDelegate = context.coordinator
+        context.coordinator.webView = webView
         return webView
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
         let coordinator = context.coordinator
 
-        // Handle print request.
+        // Handle print request — deferred to avoid blocking the SwiftUI update cycle.
         if shouldPrint {
             DispatchQueue.main.async {
                 self.shouldPrint = false
+                coordinator.printContent()
             }
-            webView.printView(nil)
             return
         }
 
