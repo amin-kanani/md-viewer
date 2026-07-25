@@ -33,20 +33,18 @@ cd md-viewer
 ./build.sh
 ```
 
-This compiles the app and packages it as `MD Viewer.app` in the project root, ad-hoc code-signs it, and registers it with Launch Services so Finder/"Open With" picks it up. Then launch it:
+This compiles the app and packages it as `MD Viewer.app` in the project root, ad-hoc code-signs it, registers it with Launch Services so Finder/"Open With" picks it up, and then wraps it into a styled, shareable `MD Viewer.dmg` — a Finder window with the app next to an `Applications` shortcut for drag-to-install. Then launch it:
 
 ```bash
 open "MD Viewer.app"                     # launch normally
 open "MD Viewer.app" path/to/file.md     # open a specific file directly
 ```
 
-### Create a shareable DMG
+To skip DMG creation and only build/package the app:
 
 ```bash
-./make-dmg.sh
+./build.sh --no-dmg
 ```
-
-Packages `MD Viewer.app` (built above) into a styled `MD Viewer.dmg` — a Finder window with the app next to an `Applications` shortcut for drag-to-install — that you can share with others.
 
 > **Note:** the app is only ad-hoc signed (no Apple Developer account is involved). Recipients will see a Gatekeeper "unidentified developer" warning on first launch; they can right-click → Open (or approve it under System Settings → Privacy & Security) once to bypass it.
 
@@ -67,8 +65,7 @@ Sources/MDViewer/
   ThemeMode.swift            Light / dark / system appearance enum
 AppResources/                Info.plist and app icon (AppIcon.icns)
 DMGResources/                Background image used when styling the DMG
-build.sh                     Builds and packages MD Viewer.app
-make-dmg.sh                  Packages MD Viewer.app into a distributable MD Viewer.dmg
+build.sh                     Builds and packages MD Viewer.app, then packages it into a distributable MD Viewer.dmg
 ```
 
 ## How it works
