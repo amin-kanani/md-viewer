@@ -6,6 +6,7 @@ import Combine
 @MainActor
 final class RenderState: ObservableObject {
     @Published private(set) var html: String
+    @Published private(set) var headings: [Heading] = []
     @Published var errorMessage: String?
     @Published var theme: ThemeMode {
         didSet { rerender() }
@@ -22,7 +23,9 @@ final class RenderState: ObservableObject {
         self.baseURL = fileURL?.deletingLastPathComponent()
         self.currentMarkdown = text
         self.theme = theme
-        self.html = MarkdownRenderer.renderHTML(markdown: text, baseURL: fileURL?.deletingLastPathComponent(), theme: theme)
+        let rendered = MarkdownRenderer.renderHTML(markdown: text, baseURL: fileURL?.deletingLastPathComponent(), theme: theme)
+        self.html = rendered.html
+        self.headings = rendered.headings
     }
 
     func startWatching() {
@@ -66,6 +69,8 @@ final class RenderState: ObservableObject {
     }
 
     private func rerender() {
-        html = MarkdownRenderer.renderHTML(markdown: currentMarkdown, baseURL: baseURL, theme: theme)
+        let rendered = MarkdownRenderer.renderHTML(markdown: currentMarkdown, baseURL: baseURL, theme: theme)
+        html = rendered.html
+        headings = rendered.headings
     }
 }

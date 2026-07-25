@@ -6,6 +6,8 @@ struct MarkdownView: View {
     @StateObject private var renderer: RenderState
     @AppStorage("themeMode") private var themeMode: ThemeMode = .system
     @State private var shouldPrint = false
+    @State private var scrollToHeadingID: String?
+    @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
     private let displayName: String
 
     init(document: MarkdownDocument, fileURL: URL?) {
@@ -14,7 +16,16 @@ struct MarkdownView: View {
     }
 
     var body: some View {
-        MarkdownWebView(html: renderer.html, baseURL: renderer.baseURL, theme: renderer.theme, shouldPrint: $shouldPrint)
+        NavigationSplitView(columnVisibility: $columnVisibility) {
+            TableOfContentsView(headings: renderer.headings, selection: $scrollToHeadingID)
+        } detail: {
+            MarkdownWebView(
+                html: renderer.html,
+                baseURL: renderer.baseURL,
+                theme: renderer.theme,
+                shouldPrint: $shouldPrint,
+                scrollToHeadingID: $scrollToHeadingID
+            )
             .overlay(alignment: .top) {
                 if let message = renderer.errorMessage {
                     Label(message, systemImage: "exclamationmark.triangle.fill")
@@ -54,6 +65,8 @@ struct MarkdownView: View {
             }
             .onDisappear { renderer.stopWatching() }
             .onDrop(of: [.fileURL], isTargeted: nil, perform: handleDrop)
+        }
+        .navigationSplitViewStyle(.balanced)
     }
 
     /// Lets the user drag a different Markdown file onto an already-open viewer window

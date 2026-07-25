@@ -8,16 +8,74 @@ import Foundation
 /// passthrough or exhaustive nested-emphasis edge cases) — an acceptable trade-off so the app
 /// can ship with zero external dependencies.
 enum MarkdownToHTML {
-    static func convert(_ markdown: String) -> String {
+    static func convert(_ markdown: String) -> (html: String, headings: [Heading]) {
         let normalized = markdown
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
-        return renderBlocks(normalized.components(separatedBy: "\n"))
+        let collector = HeadingCollector()
+        let html = renderBlocks(normalized.components(separatedBy: "\n"), collector)
+        return (html, collector.headings)
+    }
+
+    // MARK: Heading collection
+
+    /// Accumulates headings (in document order) as they're encountered by the block
+    /// renderer, assigning each a unique, GitHub-style slug used as its HTML `id` so the
+    /// Table of Contents sidebar and in-document anchor links (`[Back to top](#top)`) can
+    /// jump to it.
+    private final class HeadingCollector {
+        private(set) var headings: [Heading] = []
+        private var slugCounts: [String: Int] = [:]
+
+        func register(level: Int, rawText: String) -> String {
+            let text = MarkdownToHTML.plainText(from: rawText)
+            let base = MarkdownToHTML.slugify(text)
+            let count = slugCounts[base, default: 0]
+            slugCounts[base] = count + 1
+            let slug = count == 0 ? base : "\(base)-\(count)"
+            headings.append(Heading(id: slug, level: level, text: text))
+            return slug
+        }
+    }
+
+    /// Strips inline emphasis/code/link markup so heading slugs and TOC labels read like
+    /// the rendered text (e.g. `**Getting Started**` → "Getting Started") rather than raw
+    /// Markdown source.
+    private static func plainText(from rawText: String) -> String {
+        var text = rawText
+        text = regexReplace(text, pattern: #"!?\[([^\]]*)\]\([^)]*\)"#) { match, t in group(match, 1, in: t) ?? "" }
+        for marker in ["***", "___", "**", "__", "~~"] {
+            text = text.replacingOccurrences(of: marker, with: "")
+        }
+        text = text.replacingOccurrences(of: "`", with: "")
+        text = text.replacingOccurrences(of: "*", with: "")
+        text = text.replacingOccurrences(of: "_", with: "")
+        return text.trimmingCharacters(in: .whitespaces)
+    }
+
+    /// Approximates GitHub's heading-anchor algorithm: lowercase, drop punctuation (keeping
+    /// letters, numbers, hyphens and underscores), and collapse whitespace runs to a single
+    /// hyphen.
+    private static func slugify(_ text: String) -> String {
+        var slug = ""
+        var lastWasSpace = false
+        for scalar in text.lowercased().unicodeScalars {
+            if CharacterSet.alphanumerics.contains(scalar) || scalar == "-" || scalar == "_" {
+                slug.unicodeScalars.append(scalar)
+                lastWasSpace = false
+            } else if CharacterSet.whitespaces.contains(scalar) {
+                if !lastWasSpace { slug.append("-") }
+                lastWasSpace = true
+            }
+        }
+        while slug.hasPrefix("-") { slug.removeFirst() }
+        while slug.hasSuffix("-") { slug.removeLast() }
+        return slug.isEmpty ? "section" : slug
     }
 
     // MARK: - Block level
 
-    private static func renderBlocks(_ lines: [String]) -> String {
+    private static func renderBlocks(_ lines: [String], _ collector: HeadingCollector) -> String {
         var html = ""
         var i = 0
         while i < lines.count {
@@ -27,11 +85,11 @@ enum MarkdownToHTML {
             }
             if let (block, next) = matchFencedCode(lines, i) { html += block; i = next; continue }
             if let (block, next) = matchThematicBreak(lines, i) { html += block; i = next; continue }
-            if let (block, next) = matchHeading(lines, i) { html += block; i = next; continue }
+            if let (block, next) = matchHeading(lines, i, collector) { html += block; i = next; continue }
             if let (block, next) = matchTable(lines, i) { html += block; i = next; continue }
-            if let (block, next) = matchBlockquote(lines, i) { html += block; i = next; continue }
-            if let (block, next) = matchList(lines, i) { html += block; i = next; continue }
-            let (block, next) = matchParagraph(lines, i)
+            if let (block, next) = matchBlockquote(lines, i, collector) { html += block; i = next; continue }
+            if let (block, next) = matchList(lines, i, collector) { html += block; i = next; continue }
+            let (block, next) = matchParagraph(lines, i, collector)
             html += block
             i = next
         }
@@ -82,7 +140,7 @@ enum MarkdownToHTML {
 
     // MARK: ATX headings
 
-    private static func matchHeading(_ lines: [String], _ i: Int) -> (String, Int)? {
+    private static func matchHeading(_ lines: [String], _ i: Int, _ collector: HeadingCollector) -> (String, Int)? {
         let trimmed = lines[i].trimmingCharacters(in: .whitespaces)
         guard trimmed.hasPrefix("#") else { return nil }
         let level = trimmed.prefix(while: { $0 == "#" }).count
@@ -93,7 +151,8 @@ enum MarkdownToHTML {
         if let closingRange = content.range(of: #"[ \t]+#+$"#, options: .regularExpression) {
             content.removeSubrange(closingRange)
         }
-        return ("<h\(level)>\(renderInline(content))</h\(level)>\n", i + 1)
+        let slug = collector.register(level: level, rawText: content)
+        return ("<h\(level) id=\"\(slug)\">\(renderInline(content))</h\(level)>\n", i + 1)
     }
 
     // MARK: Block quotes
@@ -111,7 +170,7 @@ enum MarkdownToHTML {
         return String(s)
     }
 
-    private static func matchBlockquote(_ lines: [String], _ i: Int) -> (String, Int)? {
+    private static func matchBlockquote(_ lines: [String], _ i: Int, _ collector: HeadingCollector) -> (String, Int)? {
         guard isBlockquoteLine(lines[i]) else { return nil }
         var inner: [String] = []
         var j = i
@@ -128,7 +187,7 @@ enum MarkdownToHTML {
                 break
             }
         }
-        let innerHTML = renderBlocks(inner)
+        let innerHTML = renderBlocks(inner, collector)
         return ("<blockquote>\n\(innerHTML)</blockquote>\n", j)
     }
 
@@ -198,7 +257,7 @@ enum MarkdownToHTML {
         return line.prefix(width).allSatisfy { $0 == " " }
     }
 
-    private static func matchList(_ lines: [String], _ i: Int) -> (String, Int)? {
+    private static func matchList(_ lines: [String], _ i: Int, _ collector: HeadingCollector) -> (String, Int)? {
         guard let first = parseListMarker(lines[i]) else { return nil }
         let ordered = first.ordered
 
@@ -242,7 +301,7 @@ enum MarkdownToHTML {
             }
             let inner = item.contentLines.count == 1
                 ? renderInline(item.contentLines[0])
-                : renderBlocks(item.contentLines)
+                : renderBlocks(item.contentLines, collector)
             html += "<li>\(checkboxHTML)\(inner)</li>\n"
         }
         html += "</\(tag)>\n"
@@ -364,7 +423,7 @@ enum MarkdownToHTML {
         return false
     }
 
-    private static func matchParagraph(_ lines: [String], _ i: Int) -> (String, Int) {
+    private static func matchParagraph(_ lines: [String], _ i: Int, _ collector: HeadingCollector) -> (String, Int) {
         var j = i
         var collected: [String] = []
         while j < lines.count {
@@ -379,11 +438,14 @@ enum MarkdownToHTML {
         // '=' (H1) or '-' (H2), with no intervening blank line.
         if !collected.isEmpty, j < lines.count {
             let underline = lines[j].trimmingCharacters(in: .whitespaces)
+            let headingText = collected.joined(separator: " ")
             if !underline.isEmpty, underline.allSatisfy({ $0 == "=" }) {
-                return ("<h1>\(renderInline(collected.joined(separator: " ")))</h1>\n", j + 1)
+                let slug = collector.register(level: 1, rawText: headingText)
+                return ("<h1 id=\"\(slug)\">\(renderInline(headingText))</h1>\n", j + 1)
             }
             if !underline.isEmpty, underline.allSatisfy({ $0 == "-" }) {
-                return ("<h2>\(renderInline(collected.joined(separator: " ")))</h2>\n", j + 1)
+                let slug = collector.register(level: 2, rawText: headingText)
+                return ("<h2 id=\"\(slug)\">\(renderInline(headingText))</h2>\n", j + 1)
             }
         }
 

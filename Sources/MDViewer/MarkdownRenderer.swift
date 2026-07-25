@@ -2,9 +2,9 @@ import Foundation
 
 /// Converts Markdown source into a complete, styled HTML document ready to hand to a WKWebView.
 enum MarkdownRenderer {
-    static func renderHTML(markdown: String, baseURL: URL?, theme: ThemeMode = .system) -> String {
-        let body = MarkdownToHTML.convert(markdown)
-        return wrap(body: body, baseURL: baseURL, theme: theme)
+    static func renderHTML(markdown: String, baseURL: URL?, theme: ThemeMode = .system) -> (html: String, headings: [Heading]) {
+        let converted = MarkdownToHTML.convert(markdown)
+        return (wrap(body: converted.html, baseURL: baseURL, theme: theme), converted.headings)
     }
 
     private static func wrap(body: String, baseURL: URL?, theme: ThemeMode) -> String {
@@ -57,6 +57,7 @@ enum MarkdownRenderer {
         margin-top: 24px;
         margin-bottom: 16px;
         line-height: 1.25;
+        scroll-margin-top: 16px;
     }
     .markdown-body h1 { font-size: 2em; padding-bottom: .3em; border-bottom: 1px solid #d8dee4; }
     .markdown-body h2 { font-size: 1.5em; padding-bottom: .3em; border-bottom: 1px solid #d8dee4; }
