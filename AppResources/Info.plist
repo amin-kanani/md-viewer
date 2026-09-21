@@ -27,7 +27,7 @@
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.productivity</string>
     <key>NSHumanReadableCopyright</key>
-    <string>Copyright.</string>
+    <string>Developed by Amin Kanani</string>
     <key>CFBundleDocumentTypes</key>
     <array>
         <dict>

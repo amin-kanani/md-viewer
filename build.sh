@@ -85,6 +85,17 @@ prepare_developer_dir() {
     return 0
 }
 
+# Most SDK directories are symlinks (MacOSX.sdk -> MacOSX27.sdk -> MacOSX27.0.sdk),
+# so resolve them to avoid probing the same SDK several times.
+canonical_path() {
+    (cd "$1" 2>/dev/null && pwd -P) || printf '%s' "$1"
+}
+
+# Probing has to compile SwiftUI's module interface, which takes ~30s from cold.
+# Keep that work in a stable cache so it is paid once per machine rather than on
+# every probe and every run.
+PROBE_MODULE_CACHE="$SCRIPT_DIR/.build/sdk-probe-module-cache"
+
 # In the macOS 27 SDK, SwiftUI's @State is a macro backed by the SwiftUIMacros
 # compiler plugin, which ships with Xcode only. Against a Command Line Tools-only
 # install it fails with "plugin for module 'SwiftUIMacros' not found", so probe
@@ -101,8 +112,10 @@ struct BuildProbe: View {
     var body: some View { Text(String(counter)) }
 }
 SWIFT
+    mkdir -p "$PROBE_MODULE_CACHE"
     swiftc -sdk "$sdk" \
         -target "$(uname -m)-apple-macos$MACOS_DEPLOYMENT_TARGET" \
+        -module-cache-path "$PROBE_MODULE_CACHE" \
         -parse-as-library -typecheck "$probe_dir/probe.swift" >/dev/null 2>&1 || status=1
     rm -rf "$probe_dir"
     return "$status"
@@ -110,9 +123,12 @@ SWIFT
 
 select_sdk() {
     local sdks_dir="$1/SDKs"
+    local probed=" "
     local default_sdk candidate sdk
 
-    default_sdk="$(xcrun --show-sdk-path)"
+    default_sdk="$(canonical_path "$(xcrun --show-sdk-path)")"
+    echo "==> Probing $(basename "$default_sdk") (the first probe can take ~30s while the module cache warms up)" >&2
+    probed+="$default_sdk "
     if sdk_can_build_swiftui "$default_sdk"; then
         printf '%s' "$default_sdk"
         return 0
@@ -121,8 +137,11 @@ select_sdk() {
     echo "==> $(basename "$default_sdk") cannot expand SwiftUI macros without Xcode; trying older SDKs" >&2
     for candidate in $(for sdk in "$sdks_dir"/MacOSX*.sdk; do basename "$sdk"; done \
         | grep -E '^MacOSX[0-9]+(\.[0-9]+)*\.sdk$' | sort -Vr); do
-        sdk="$sdks_dir/$candidate"
+        sdk="$(canonical_path "$sdks_dir/$candidate")"
         [[ -f "$sdk/SDKSettings.plist" ]] || continue
+        [[ "$probed" == *" $sdk "* ]] && continue
+        probed+="$sdk "
+        echo "==> Probing $(basename "$sdk")" >&2
         if sdk_can_build_swiftui "$sdk"; then
             printf '%s' "$sdk"
             return 0
@@ -133,12 +152,13 @@ select_sdk() {
 }
 
 echo "==> Checking toolchain"
-prepare_developer_dir "$(xcode-select -p)"
-if [[ -n "$SHIM_DEVELOPER_DIR" ]]; then
-    export DEVELOPER_DIR="$SHIM_DEVELOPER_DIR"
-fi
+DEVELOPER_DIR_REAL="$(xcode-select -p)"
 
-if ! SDKROOT="$(select_sdk "$(xcode-select -p)")"; then
+# Probe before installing the shim developer directory below. The shim is a fresh
+# temporary directory on every run and swiftc keys its module cache on the SDK
+# path, so probing through the shim would recompile SwiftUI's module interface
+# from scratch on every probe of every run (~35s each, with no output).
+if ! SDKROOT="$(select_sdk "$DEVELOPER_DIR_REAL")"; then
     echo "error: no installed macOS SDK can compile SwiftUI's @State." >&2
     echo "       Install Xcode, or reinstall the Command Line Tools:" >&2
     echo "         sudo rm -rf /Library/Developer/CommandLineTools && xcode-select --install" >&2
@@ -146,6 +166,11 @@ if ! SDKROOT="$(select_sdk "$(xcode-select -p)")"; then
 fi
 export SDKROOT
 echo "==> Using SDK $(basename "$SDKROOT")"
+
+prepare_developer_dir "$DEVELOPER_DIR_REAL"
+if [[ -n "$SHIM_DEVELOPER_DIR" ]]; then
+    export DEVELOPER_DIR="$SHIM_DEVELOPER_DIR"
+fi
 
 echo "==> Building $APP_TARGET ($BUILD_CONFIG)…"
 swift build -c "$BUILD_CONFIG"
