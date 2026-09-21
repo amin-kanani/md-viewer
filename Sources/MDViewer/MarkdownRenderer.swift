@@ -129,6 +129,27 @@ enum MarkdownRenderer {
 
     .markdown-body input[type="checkbox"] { margin-right: 0.5em; }
 
+    /* Find in document */
+    mark.md-find-hit {
+        background: #fff2a8;
+        color: #1f2328;
+        border-radius: 2px;
+        padding: 0;
+    }
+    mark.md-find-hit-current {
+        background: #ff8c1a;
+        color: #1f2328;
+        box-shadow: 0 0 0 2px rgba(255, 140, 26, 0.45);
+    }
+
+    @media print {
+        mark.md-find-hit, mark.md-find-hit-current {
+            background: none;
+            color: inherit;
+            box-shadow: none;
+        }
+    }
+
     /* Dark mode: system preference (only when not forced to light) */
     @media (prefers-color-scheme: dark) {
         html:not([data-theme="light"]), html:not([data-theme="light"]) body {
@@ -147,6 +168,12 @@ enum MarkdownRenderer {
         html:not([data-theme="light"]) .markdown-body tr:nth-child(2n) { background: #161b22; }
         html:not([data-theme="light"]) .markdown-body th { background: #161b22; }
         html:not([data-theme="light"]) .markdown-body hr { background: #30363d; }
+        html:not([data-theme="light"]) mark.md-find-hit { background: rgba(210, 153, 34, 0.5); color: #e6edf3; }
+        html:not([data-theme="light"]) mark.md-find-hit-current {
+            background: #bb8009;
+            color: #ffffff;
+            box-shadow: 0 0 0 2px rgba(187, 128, 9, 0.5);
+        }
     }
 
     /* Dark mode: forced via toggle */
@@ -166,5 +193,11 @@ enum MarkdownRenderer {
     html[data-theme="dark"] .markdown-body tr:nth-child(2n) { background: #161b22; }
     html[data-theme="dark"] .markdown-body th { background: #161b22; }
     html[data-theme="dark"] .markdown-body hr { background: #30363d; }
+    html[data-theme="dark"] mark.md-find-hit { background: rgba(210, 153, 34, 0.5); color: #e6edf3; }
+    html[data-theme="dark"] mark.md-find-hit-current {
+        background: #bb8009;
+        color: #ffffff;
+        box-shadow: 0 0 0 2px rgba(187, 128, 9, 0.5);
+    }
     """
 }

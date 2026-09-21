@@ -4,6 +4,7 @@ import AppKit
 
 struct MarkdownView: View {
     @StateObject private var renderer: RenderState
+    @StateObject private var findState = FindState()
     @AppStorage("themeMode") private var themeMode: ThemeMode = .system
     @State private var shouldPrint = false
     @State private var scrollToHeadingID: String?
@@ -23,9 +24,16 @@ struct MarkdownView: View {
                 html: renderer.html,
                 baseURL: renderer.baseURL,
                 theme: renderer.theme,
+                findState: findState,
                 shouldPrint: $shouldPrint,
                 scrollToHeadingID: $scrollToHeadingID
             )
+            .overlay(alignment: .topTrailing) {
+                if findState.isPresented {
+                    FindBarView(findState: findState)
+                        .padding(12)
+                }
+            }
             .overlay(alignment: .top) {
                 if let message = renderer.errorMessage {
                     Label(message, systemImage: "exclamationmark.triangle.fill")
@@ -37,6 +45,14 @@ struct MarkdownView: View {
             }
             .navigationTitle(displayName)
             .toolbar {
+                ToolbarItem(placement: .automatic) {
+                    Button {
+                        findState.toggle()
+                    } label: {
+                        Label("Find", systemImage: "magnifyingglass")
+                    }
+                    .help("Find in this document (⌘F)")
+                }
                 ToolbarItem(placement: .automatic) {
                     Button {
                         shouldPrint = true
@@ -65,6 +81,7 @@ struct MarkdownView: View {
             }
             .onDisappear { renderer.stopWatching() }
             .onDrop(of: [.fileURL], isTargeted: nil, perform: handleDrop)
+            .focusedSceneValue(\.findState, findState)
         }
         .navigationSplitViewStyle(.balanced)
     }

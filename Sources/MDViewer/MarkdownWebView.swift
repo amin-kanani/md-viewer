@@ -11,6 +11,7 @@ struct MarkdownWebView: NSViewRepresentable {
     let html: String
     let baseURL: URL?
     var theme: ThemeMode = .system
+    let findState: FindState
     @Binding var shouldPrint: Bool
     @Binding var scrollToHeadingID: String?
 
@@ -20,6 +21,7 @@ struct MarkdownWebView: NSViewRepresentable {
         var lastLoadedHTML: String?
         var lastAppliedTheme: ThemeMode?
         var baseURL: URL?
+        var findState: FindState?
         weak var webView: WKWebView?
 
         func webView(
@@ -39,6 +41,12 @@ struct MarkdownWebView: NSViewRepresentable {
                 return
             }
             decisionHandler(.allow)
+        }
+
+        /// Reloading the page throws away the find highlights, so re-apply the active search.
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            guard let findState else { return }
+            Task { @MainActor in findState.refreshAfterReload() }
         }
 
         /// True for a bare `#slug` link that resolves (via the page's `<base>` tag) back to
@@ -73,16 +81,27 @@ struct MarkdownWebView: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> WKWebView {
-        let webView = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
+        let configuration = WKWebViewConfiguration()
+        configuration.userContentController.addUserScript(
+            WKUserScript(
+                source: FindState.injectedScript,
+                injectionTime: .atDocumentEnd,
+                forMainFrameOnly: true
+            )
+        )
+        let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
         context.coordinator.webView = webView
         context.coordinator.baseURL = baseURL
+        context.coordinator.findState = findState
+        findState.attach(to: webView)
         return webView
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
         let coordinator = context.coordinator
         coordinator.baseURL = baseURL
+        coordinator.findState = findState
 
         // Handle print request — deferred to avoid blocking the SwiftUI update cycle.
         if shouldPrint {
