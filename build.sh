@@ -26,6 +26,127 @@ done
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Must stay in sync with the deployment target in Package.swift.
+MACOS_DEPLOYMENT_TARGET="13.0"
+
+MOUNT_DIR=""
+STAGING_DIR=""
+DMG_TMP=""
+SHIM_PARENT=""
+
+cleanup() {
+    if [[ -n "$MOUNT_DIR" && -d "$MOUNT_DIR" ]]; then
+        hdiutil detach "$MOUNT_DIR" -quiet -force || true
+    fi
+    [[ -n "$STAGING_DIR" ]] && rm -rf "$STAGING_DIR"
+    [[ -n "$DMG_TMP" ]] && rm -f "$DMG_TMP"
+    [[ -n "$SHIM_PARENT" ]] && rm -rf "$SHIM_PARENT"
+    return 0
+}
+trap cleanup EXIT
+
+# Swift Build parses every SDK under <developer dir>/SDKs when it starts up, so a
+# single malformed SDK (one with no SDKSettings.plist, which stale OS updates can
+# leave behind) kills the build with "Unknown error parsing property list". Since
+# the SDK directory is root-owned, route around it with a throwaway developer
+# directory that symlinks only the SDKs that are actually well-formed.
+SHIM_DEVELOPER_DIR=""
+prepare_developer_dir() {
+    local developer_dir="$1"
+    local sdks_dir="$developer_dir/SDKs"
+    [[ -d "$sdks_dir" ]] || return 0
+
+    local sdk name
+    local malformed=" "
+    for sdk in "$sdks_dir"/*.sdk; do
+        [[ -d "$sdk" ]] || continue
+        [[ -f "$sdk/SDKSettings.plist" ]] && continue
+        malformed+="$(basename "$sdk") "
+    done
+    [[ "$malformed" == " " ]] && return 0
+
+    echo "==> Ignoring malformed SDK(s):$malformed"
+
+    SHIM_PARENT="$(mktemp -d)"
+    SHIM_DEVELOPER_DIR="$SHIM_PARENT/$(basename "$developer_dir")"
+    mkdir -p "$SHIM_DEVELOPER_DIR/SDKs"
+
+    for entry in "$developer_dir"/*; do
+        name="$(basename "$entry")"
+        [[ "$name" == "SDKs" ]] && continue
+        ln -s "$entry" "$SHIM_DEVELOPER_DIR/$name"
+    done
+    for sdk in "$sdks_dir"/*; do
+        name="$(basename "$sdk")"
+        [[ "$malformed" == *" $name "* ]] && continue
+        ln -s "$sdk" "$SHIM_DEVELOPER_DIR/SDKs/$name"
+    done
+
+    return 0
+}
+
+# In the macOS 27 SDK, SwiftUI's @State is a macro backed by the SwiftUIMacros
+# compiler plugin, which ships with Xcode only. Against a Command Line Tools-only
+# install it fails with "plugin for module 'SwiftUIMacros' not found", so probe
+# each SDK and keep the newest one that can still compile @State.
+sdk_can_build_swiftui() {
+    local sdk="$1"
+    local probe_dir status=0
+    probe_dir="$(mktemp -d)"
+    cat > "$probe_dir/probe.swift" <<'SWIFT'
+import SwiftUI
+
+struct BuildProbe: View {
+    @State private var counter = 0
+    var body: some View { Text(String(counter)) }
+}
+SWIFT
+    swiftc -sdk "$sdk" \
+        -target "$(uname -m)-apple-macos$MACOS_DEPLOYMENT_TARGET" \
+        -parse-as-library -typecheck "$probe_dir/probe.swift" >/dev/null 2>&1 || status=1
+    rm -rf "$probe_dir"
+    return "$status"
+}
+
+select_sdk() {
+    local sdks_dir="$1/SDKs"
+    local default_sdk candidate sdk
+
+    default_sdk="$(xcrun --show-sdk-path)"
+    if sdk_can_build_swiftui "$default_sdk"; then
+        printf '%s' "$default_sdk"
+        return 0
+    fi
+
+    echo "==> $(basename "$default_sdk") cannot expand SwiftUI macros without Xcode; trying older SDKs" >&2
+    for candidate in $(for sdk in "$sdks_dir"/MacOSX*.sdk; do basename "$sdk"; done \
+        | grep -E '^MacOSX[0-9]+(\.[0-9]+)*\.sdk$' | sort -Vr); do
+        sdk="$sdks_dir/$candidate"
+        [[ -f "$sdk/SDKSettings.plist" ]] || continue
+        if sdk_can_build_swiftui "$sdk"; then
+            printf '%s' "$sdk"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+echo "==> Checking toolchain"
+prepare_developer_dir "$(xcode-select -p)"
+if [[ -n "$SHIM_DEVELOPER_DIR" ]]; then
+    export DEVELOPER_DIR="$SHIM_DEVELOPER_DIR"
+fi
+
+if ! SDKROOT="$(select_sdk "$(xcode-select -p)")"; then
+    echo "error: no installed macOS SDK can compile SwiftUI's @State." >&2
+    echo "       Install Xcode, or reinstall the Command Line Tools:" >&2
+    echo "         sudo rm -rf /Library/Developer/CommandLineTools && xcode-select --install" >&2
+    exit 1
+fi
+export SDKROOT
+echo "==> Using SDK $(basename "$SDKROOT")"
+
 echo "==> Building $APP_TARGET ($BUILD_CONFIG)…"
 swift build -c "$BUILD_CONFIG"
 BIN_DIR="$(swift build -c "$BUILD_CONFIG" --show-bin-path)"
@@ -65,13 +186,6 @@ if [[ -d "$MOUNT_DIR" ]]; then
 fi
 
 STAGING_DIR="$(mktemp -d)"
-cleanup() {
-    if [[ -d "$MOUNT_DIR" ]]; then
-        hdiutil detach "$MOUNT_DIR" -quiet -force || true
-    fi
-    rm -rf "$STAGING_DIR" "$DMG_TMP"
-}
-trap cleanup EXIT
 
 echo "==> Staging DMG contents"
 cp -R "$APP_BUNDLE" "$STAGING_DIR/"

@@ -24,6 +24,8 @@ A lightweight, native macOS app for viewing rendered Markdown files.
 - macOS 13 (Ventura) or later
 - Swift 5.10+ toolchain to build from source (Xcode 15+, or the Command Line Tools)
 
+> **Note:** SwiftUI's `@State` became a macro in the macOS 27 SDK, and the compiler plugin that expands it ships with Xcode only. On a Command Line Tools-only machine `build.sh` detects this and automatically falls back to the newest installed SDK that can still build the app. It also skips any malformed SDK left behind by an OS update, which would otherwise make Swift Build fail with `Unknown error parsing property list`.
+
 ## Installation
 
 ### Build from source
